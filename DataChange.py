@@ -7,7 +7,7 @@ from matplotlib.colors import to_rgba
 import matplotlib.patheffects as path_effects
 
 # ======================
-# 专业可视化参数配置
+# Professional Visualization Parameters Configuration
 # ======================
 PROFESSIONAL_STYLE = {
     'figure.figsize': (14, 14),
@@ -31,44 +31,44 @@ plt.rcParams.update(PROFESSIONAL_STYLE)
 
 
 # ======================
-# 数据准备 (修改了标准化方法)
+# Data Preparation (modified normalization method)
 # ======================
 def load_and_prepare_data(filepath):
-    """加载并准备雷达图数据"""
+    """Load and prepare radar chart data"""
     try:
         df_raw = pd.read_csv(filepath)
     except FileNotFoundError:
-        raise FileNotFoundError(f"数据文件 '{filepath}' 未找到，请检查文件路径")
+        raise FileNotFoundError(f"Data file '{filepath}' not found, please check the file path")
 
-    # 定义分析指标
+    # Define analysis metrics
     value_vars = [
         'mean_ghgs', 'mean_land', 'mean_watscar', 'mean_eut',
         'mean_ghgs_ch4', 'mean_ghgs_n2o', 'mean_bio', 'mean_watuse', 'mean_acid'
     ]
 
-    # 验证数据列
+    # Validate data columns
     missing_cols = [col for col in value_vars if col not in df_raw.columns]
     if missing_cols:
-        raise ValueError(f"数据文件中缺少以下列: {missing_cols}")
+        raise ValueError(f"Missing columns in data file: {missing_cols}")
 
-    # 计算分组平均值
+    # Calculate group averages
     df_avg = df_raw.groupby("diet_group")[value_vars].mean().reset_index()
 
-    # 转换为长格式
+    # Convert to long format
     df_melt = df_avg.melt(id_vars="diet_group", var_name="variable", value_name="value")
 
-    # 计算角度
+    # Calculate angles
     variables = df_melt["variable"].unique()
     n = len(variables)
     angle_map = {var: i * 2 * np.pi / n for i, var in enumerate(variables)}
     df_melt["angle"] = df_melt["variable"].map(angle_map)
 
-    # 修改标准化方法 - 避免最小值全为0的问题
-    # 使用全局最小值的95%作为基准，保留vegan数据的可见性
+    # Modified normalization method - avoid all zeros for minimum values
+    # Use 95% of global minimum as baseline to preserve vegan data visibility
     def safe_normalize(x):
         x_min = x.min()
         x_max = x.max()
-        # 如果最小值是0，使用全局最小值的95%作为基准
+        # If minimum is 0, use 95% of global minimum as baseline
         if x_min == 0:
             adjusted_min = 0.95 * x.min()
         else:
@@ -77,7 +77,7 @@ def load_and_prepare_data(filepath):
 
     df_melt["value_norm"] = df_melt.groupby("variable")["value"].transform(safe_normalize)
 
-    # 确保多边形闭合
+    # Ensure polygon closure
     df_closed = []
     for group in df_melt["diet_group"].unique():
         df_group = df_melt[df_melt["diet_group"] == group].sort_values("angle")
@@ -86,34 +86,34 @@ def load_and_prepare_data(filepath):
 
     df_final = pd.concat(df_closed)
 
-    # 计算原始值的描述统计
+    # Calculate descriptive statistics of raw values
     desc_stats = df_raw[value_vars].describe().T.reset_index()
     desc_stats.columns = ['variable'] + [f'raw_{col}' for col in desc_stats.columns[1:]]
 
-    # 合并原始数据统计
+    # Merge with raw data statistics
     df_final = pd.merge(df_final, desc_stats, on='variable', how='left')
 
     return df_final, df_raw.shape[0], df_avg
 
 
 # ======================
-# 数据导出函数
+# Data Export Function
 # ======================
 def export_radar_data(df_final, df_avg, export_path):
-    """导出雷达图使用的数据"""
+    """Export radar chart data"""
 
-    # 导出原始平均值数据
+    # Export original average data
     df_avg.to_csv(f"{export_path}_diet_group_averages.csv", index=False)
 
-    # 导出雷达图转换后的数据
+    # Export transformed radar chart data
     radar_data = df_final.copy()
 
-    # 添加变量顺序信息
+    # Add variable order information
     variables = df_final["variable"].unique()
     var_order = {var: i for i, var in enumerate(variables)}
     radar_data["variable_order"] = radar_data["variable"].map(var_order)
 
-    # 重新排列列
+    # Reorder columns
     cols = ['diet_group', 'variable', 'variable_order', 'angle',
             'value', 'value_norm', 'raw_count', 'raw_mean', 'raw_std',
             'raw_min', 'raw_25%', 'raw_50%', 'raw_75%', 'raw_max']
@@ -121,48 +121,48 @@ def export_radar_data(df_final, df_avg, export_path):
 
     radar_data[cols].to_csv(f"{export_path}_radar_transformed_data.csv", index=False)
 
-    print(f"数据已成功导出到 {export_path}_*.csv 文件")
+    print(f"Data successfully exported to {export_path}_*.csv files")
 
 
 # ======================
-# 可视化函数 (增强vegan组的可见性)
+# Visualization Function (enhanced vegan group visibility)
 # ======================
 def create_professional_radar(df_final, total_samples, save_path=None):
-    """创建专业级雷达图"""
-    # 创建图形
+    """Create professional radar chart"""
+    # Create figure
     fig = plt.figure(dpi=300)
     ax = fig.add_subplot(111, polar=True)
 
-    # 获取唯一饮食组和颜色
+    # Get unique diet groups and colors
     groups = df_final["diet_group"].unique()
     colors = plt.cm.tab10(np.linspace(0, 1, len(groups)))
 
-    # 特别为vegan组设置更醒目的颜色
+    # Set more prominent color for vegan group
     vegan_index = np.where(groups == 'vegan')[0][0] if 'vegan' in groups else -1
     if vegan_index >= 0:
-        colors[vegan_index] = to_rgba('#FF0000', 1.0)  # 红色突出显示
+        colors[vegan_index] = to_rgba('#FF0000', 1.0)  # Highlight in red
 
     # ======================
-    # 雷达图基础设置
+    # Radar Chart Basic Settings
     # ======================
     ax.set_theta_offset(np.pi / 2)
     ax.set_theta_direction(-1)
     ax.set_rlabel_position(0)
     ax.set_ylim(0, 1.15)
 
-    # 设置网格和刻度
+    # Set grid and ticks
     ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
     ax.set_yticklabels(["20%", "40%", "60%", "80%", "100%"], color='#555555')
     ax.grid(color='#E0E0E0', linestyle='--', linewidth=0.8, alpha=0.8)
 
     # ======================
-    # 轴标签设置
+    # Axis Label Settings
     # ======================
     variables = df_final["variable"].unique()
     n = len(variables)
     ax.set_xticks(np.linspace(0, 2 * np.pi, n, endpoint=False))
 
-    # 定义指标单位
+    # Define metric units
     units = {
         'ghgs': '(kg CO2-eq/day)',
         'land': '(m²/year)',
@@ -175,14 +175,14 @@ def create_professional_radar(df_final, total_samples, save_path=None):
         'acid': '(g SO2-eq/day)'
     }
 
-    # 创建带单位的标签
+    # Create labels with units
     xtick_labels = []
     for v in variables:
         key = v.replace('mean_', '')
         label = f"{key.replace('_', ' ').title()}\n{units.get(key, '')}"
         xtick_labels.append(label)
 
-    # 设置标签样式
+    # Set label styles
     xticks = ax.set_xticklabels(
         xtick_labels,
         fontsize=11,
@@ -190,14 +190,14 @@ def create_professional_radar(df_final, total_samples, save_path=None):
         fontweight='semibold'
     )
 
-    # 添加标签效果增强可读性
+    # Add label effects for better readability
     for label in xticks:
         label.set_path_effects([
             path_effects.withStroke(linewidth=3, foreground="white", alpha=0.7)
         ])
 
     # ======================
-    # 绘制数据 (特别处理vegan组)
+    # Plot Data (special handling for vegan group)
     # ======================
     line_styles = ['-', '--', '-.', ':']
     marker_styles = ['o', 's', 'D', '^', 'v']
@@ -205,26 +205,26 @@ def create_professional_radar(df_final, total_samples, save_path=None):
     for i, group in enumerate(groups):
         sub_df = df_final[df_final["diet_group"] == group]
         values = sub_df["value_norm"].values[:-1]
-        angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+        angles = np.linspace(0, 2 * np.pi, n, endpoint=False))
 
-        # 特别处理vegan组的填充透明度
+        # Special handling for vegan group fill transparency
         fill_alpha = 0.25
         if group == 'vegan':
-            fill_alpha = 0.4  # 增加填充透明度
-            line_width = 3.0  # 增加线宽
-            marker_size = 10  # 增加标记点大小
+            fill_alpha = 0.4  # Increase fill transparency
+            line_width = 3.0  # Increase line width
+            marker_size = 10  # Increase marker size
         else:
             line_width = 2.5
             marker_size = 8
 
-        # 绘制填充区域
+        # Draw filled area
         ax.fill(
             angles, values,
             color=to_rgba(colors[i], alpha=fill_alpha),
             linewidth=0
         )
 
-        # 绘制线条和标记点
+        # Draw lines and markers
         ax.plot(
             angles, values,
             color=colors[i],
@@ -233,21 +233,21 @@ def create_professional_radar(df_final, total_samples, save_path=None):
             marker=marker_styles[i % len(marker_styles)],
             markersize=marker_size,
             markeredgecolor='white',
-            markeredgewidth=1.5 if group == 'vegan' else 1,  # vegan组边框更粗
+            markeredgewidth=1.5 if group == 'vegan' else 1,  # Thicker border for vegan
             label=group,
-            zorder=3 if group == 'vegan' else 2  # vegan组在最上层
+            zorder=3 if group == 'vegan' else 2  # Vegan group on top layer
         )
 
     # ======================
-    # 添加专业图例 (突出显示vegan)
+    # Add Professional Legend (highlight vegan)
     # ======================
-    # 创建样本量统计
+    # Create sample size info
     sample_info = f"Total Samples: {total_samples:,}"
 
-    # 创建图例元素
+    # Create legend elements
     legend_elements = []
     for i, group in enumerate(groups):
-        # 特别标记vegan组
+        # Special mark for vegan group
         if group == 'vegan':
             label = f"{group} (lowest impact)"
             marker_edge_width = 1.5
@@ -267,7 +267,7 @@ def create_professional_radar(df_final, total_samples, save_path=None):
                    label=label)
         )
 
-    # 添加主图例
+    # Add main legend
     legend1 = ax.legend(
         handles=legend_elements,
         loc='upper right',
@@ -279,7 +279,7 @@ def create_professional_radar(df_final, total_samples, save_path=None):
     )
     legend1.get_frame().set_edgecolor('#CCCCCC')
 
-    # 添加统计信息
+    # Add statistics info
     stats_text = "\n".join([
         "Data Characteristics:",
         f"- Total participants: {total_samples:,}",
@@ -302,14 +302,14 @@ def create_professional_radar(df_final, total_samples, save_path=None):
     )
 
     # ======================
-    # 添加中心标题和装饰
+    # Add Center Title and Decorations
     # ======================
-    # 添加中心圆
+    # Add center circle
     center_circle = Circle((0, 0), 0.1, transform=ax.transData._b,
                            facecolor='white', edgecolor='#AAAAAA', alpha=0.8)
     ax.add_patch(center_circle)
 
-    # 添加中心标题
+    # Add center title
     ax.text(
         0, 0, "Environmental\nImpact\nAssessment",
         ha='center', va='center',
@@ -318,7 +318,7 @@ def create_professional_radar(df_final, total_samples, save_path=None):
         color='#555555'
     )
 
-    # 添加比例箭头
+    # Add scale arrow
     arrowprops = dict(
         arrowstyle="->",
         color="#5F5F5F",
@@ -331,7 +331,7 @@ def create_professional_radar(df_final, total_samples, save_path=None):
                 xycoords='axes fraction', arrowprops=arrowprops)
 
     # ======================
-    # 添加主标题和来源
+    # Add Main Title and Source
     # ======================
     plt.suptitle(
         "Comparative Environmental Impact of Dietary Patterns",
@@ -346,7 +346,7 @@ def create_professional_radar(df_final, total_samples, save_path=None):
         fontsize=14
     )
 
-    # 添加来源信息
+    # Add source information
     fig.text(
         0.95, 0.02,
         "Data Source: Results_21MAR2022_nokcaladjust.csv | "
@@ -358,10 +358,10 @@ def create_professional_radar(df_final, total_samples, save_path=None):
     )
 
     # ======================
-    # 最终调整和保存
+    # Final Adjustments and Saving
     # ======================
     plt.tight_layout(pad=4.0)
-    plt.subplots_adjust(right=0.75)  # 为图例留出空间
+    plt.subplots_adjust(right=0.75)  # Make space for legend
 
     if save_path:
         formats = ['png', 'svg', 'pdf']
@@ -377,14 +377,14 @@ def create_professional_radar(df_final, total_samples, save_path=None):
 
 
 # ======================
-# 执行数据准备和可视化
+# Execute Data Preparation and Visualization
 # ======================
 if __name__ == "__main__":
-    # 加载数据
+    # Load data
     df_final, total_samples, df_avg = load_and_prepare_data("Results_21MAR2022_nokcaladjust.csv")
 
-    # 导出数据
+    # Export data
     export_radar_data(df_final, df_avg, "diet_environmental_impact")
 
-    # 创建可视化
+    # Create visualization
     create_professional_radar(df_final, total_samples, save_path="diet_environmental_impact")
